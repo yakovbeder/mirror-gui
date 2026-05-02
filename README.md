@@ -93,17 +93,17 @@ Visual configuration builder with tabs for Platform Channels, Operators, Additio
 
 ![Add Operator](docs/screenshots/config-add-operator.png)
 
-**YAML preview and editing** -- Preview the generated `ImageSetConfiguration` YAML, copy to clipboard, or edit directly. Supports optional `archiveSize` parameter to limit archive file sizes.
+**YAML preview and editing** -- Preview the generated `ImageSetConfiguration` YAML, copy to clipboard, or edit directly. Set an optional archive size limit (in GiB) to control the maximum size of each archive file.
 
 ![Edit Preview](docs/screenshots/config-edit-preview.png)
 
-**Upload existing YAML** -- Import existing `ImageSetConfiguration` files, review and edit them, then save to server or load into the form editor.
+**Upload existing YAML** -- Import an existing `ImageSetConfiguration` YAML file, review and edit it, then save it or load it into the form editor for further modification.
 
 ![Upload YAML](docs/screenshots/config-upload-yaml.png)
 
 ### Mirror Operations
 
-Execute mirror operations with real-time monitoring. Select a configuration file, choose a destination subdirectory, and start. View operation history with logs, location info, and delete actions.
+Execute mirror operations with real-time monitoring. Select a saved configuration file, optionally specify a destination subdirectory, and start the operation. View operation history with logs, location info, and delete actions.
 
 ![Mirror Operations](docs/screenshots/mirror-operations.png)
 
@@ -143,14 +143,12 @@ Configure environment preferences across three tabs:
 |---|---|
 | **oc-mirror** | v2 |
 | **OpenShift** | 4.16, 4.17, 4.18, 4.19, 4.20, 4.21 |
-| **Container runtime** | Podman 4.0+ |
+| **Container runtime** | Podman 5.0+ |
 | **Architecture** | AMD64 (x86_64), ARM64 (aarch64) |
 
 ---
 
 ## Troubleshooting
-
-**"Failed to save configuration"** -- Fix directory permissions: `sudo chmod -R 755 data/`
 
 **Invalid GPG signature for operator index images** -- See [Red Hat KB article](https://access.redhat.com/solutions/6542281).
 

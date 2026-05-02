@@ -498,10 +498,10 @@ main() {
             echo "  --logs    - Show container logs"
             echo "  --help, -h - Show this help message"
             echo ""
-    echo "Environment:"
-    echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
-    echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
-    echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
+            echo "Environment:"
+            echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
+            echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+            echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
             exit 0
             ;;
         *)
