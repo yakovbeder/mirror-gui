@@ -23,8 +23,8 @@ cd mirror-gui
 ### Option 1: Pre-built image (recommended)
 
 ```bash
-chmod +x start-app.sh
-./start-app.sh
+chmod +x mirror-gui.sh
+./mirror-gui.sh
 ```
 
 The script auto-detects your architecture (AMD64/ARM64), pulls the image, and starts the app.
@@ -33,24 +33,24 @@ It will warn if `pull-secret/pull-secret.json` is missing but will still start. 
 To use a specific image (e.g. a CI-built image), pass it via `IMAGE_NAME`:
 
 ```bash
-IMAGE_NAME=registry.ci.openshift.org/ocp/5.0:mirror-gui ./start-app.sh
+IMAGE_NAME=registry.ci.openshift.org/ocp/5.0:mirror-gui ./mirror-gui.sh
 ```
 
 You can also override the host port or the oc-mirror cache directory:
 
 ```bash
-WEB_PORT=3002 ./start-app.sh
+WEB_PORT=3002 ./mirror-gui.sh
 ```
 
 ```bash
-CACHE_DIR=/tmp/mirror-cache ./start-app.sh
+CACHE_DIR=/tmp/mirror-cache ./mirror-gui.sh
 ```
 
 When `CACHE_DIR` is set, the host directory is mounted into the container and used by oc-mirror for catalog metadata and layer data. The current cache location is shown in **Settings > Cache**.
 
 Open the URL printed by the script in your browser. By default it uses **http://localhost:3000**, but it automatically selects another free host port if `3000` is already in use. If a different port is chosen, use the `Web UI:` line printed by the script output.
 
-Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.sh --status`, `./start-app.sh --logs`.
+Manage with: `./mirror-gui.sh --stop`, `./mirror-gui.sh --restart`, `./mirror-gui.sh --status`, `./mirror-gui.sh --logs`.
 
 ### Option 2: Build locally
 

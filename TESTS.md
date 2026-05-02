@@ -94,7 +94,7 @@ Playwright reports are uploaded as CI artifacts (retained 14 days).
 
 Runs [ShellCheck](https://www.shellcheck.net/) with `-S error` (error-level severity) on all shell scripts:
 
-- `start-app.sh`
+- `mirror-gui.sh`
 - `entrypoint.sh`
 - `container-run.sh`
 - `fetch-catalogs-host.sh`
