@@ -38,6 +38,14 @@ describe('Config API', () => {
       expect(res.body.message).toContain('successfully');
       expect(res.body.filename).toBe('test-save.yaml');
     });
+
+    it('rejects path traversal in save filename', async () => {
+      const res = await request
+        .post('/api/config/save')
+        .send({ config: validConfigYaml, name: '../../evil.yaml' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid filename/i);
+    });
   });
 
   describe('POST /api/config/upload', () => {
@@ -85,6 +93,25 @@ describe('Config API', () => {
       });
       expect(res.status).toBe(200);
       expect(res.body.filename).toBe('valid-upload.yaml');
+    });
+
+    it('rejects path traversal in upload filename', async () => {
+      const res = await request.post('/api/config/upload').send({
+        filename: '../../evil.yaml',
+        content: validConfigYaml,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid filename/i);
+    });
+
+    it('rejects spoofed apiVersion', async () => {
+      const res = await request.post('/api/config/upload').send({
+        filename: 'spoofed.yaml',
+        content:
+          'kind: ImageSetConfiguration\napiVersion: evil/mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('mirror.openshift.io');
     });
 
     it('returns 409 for duplicate filename', async () => {

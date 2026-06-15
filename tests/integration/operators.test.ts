@@ -28,6 +28,15 @@ describe('Operators API', () => {
       expect(res.body).toContain('odf-operator');
     });
 
+    it('uses the first value when catalog is repeated in query params', async () => {
+      const res = await request.get(
+        '/api/operators?catalog=registry.redhat.io/redhat/redhat-operator-index:v4.21&catalog=ignored',
+      );
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body).toContain('advanced-cluster-management');
+    });
+
     it('returns detailed operators with channels', async () => {
       const res = await request.get('/api/operators').query({
         catalog: 'registry.redhat.io/redhat/redhat-operator-index:v4.21',

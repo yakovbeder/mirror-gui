@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
+import { isValidMirrorApiVersion } from '../utils/configValidation';
 import YamlHighlighter from './YamlHighlighter';
 import {
   Alert,
@@ -1308,7 +1309,7 @@ const MirrorConfig: React.FC = () => {
         setParsedUpload(null);
         return;
       }
-      if (!parsed?.apiVersion?.includes('mirror.openshift.io')) {
+      if (!isValidMirrorApiVersion(parsed?.apiVersion)) {
         setUploadError('Invalid YAML: Must have mirror.openshift.io API version');
         setParsedUpload(null);
         return;
@@ -1451,7 +1452,7 @@ const MirrorConfig: React.FC = () => {
         setFieldError('yaml-preview', 'Must be an ImageSetConfiguration');
         return;
       }
-      if (!parsed.apiVersion?.includes('mirror.openshift.io')) {
+      if (!isValidMirrorApiVersion(parsed.apiVersion)) {
         setFieldError('yaml-preview', 'Must have mirror.openshift.io API version');
         return;
       }

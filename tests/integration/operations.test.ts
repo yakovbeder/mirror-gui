@@ -46,6 +46,14 @@ describe('Operations API', () => {
       expect(res.body.error).toContain('not found');
     });
 
+    it('rejects path traversal in configFile', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: '../../evil.yaml',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid filename/i);
+    });
+
     it('rejects path traversal in mirrorDestinationSubdir', async () => {
       await request.post('/api/config/save').send({
         config: 'kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
@@ -70,12 +78,26 @@ describe('Operations API', () => {
   });
 
   describe('DELETE /api/operations/:id', () => {
-    it('returns success for any id', async () => {
+    it('returns success for a valid non-existent id', async () => {
       const res = await request.delete(
-        '/api/operations/00000000-0000-0000-0000-000000000000'
+        '/api/operations/00000000-0000-4000-8000-000000000000'
       );
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('success');
+    });
+
+    it('returns 400 for invalid operation id', async () => {
+      const res = await request.delete('/api/operations/not-a-uuid');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid operation id/i);
+    });
+  });
+
+  describe('GET /api/operations/:id/logs', () => {
+    it('returns 400 for invalid operation id', async () => {
+      const res = await request.get('/api/operations/not-a-uuid/logs');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid operation id/i);
     });
   });
 });

@@ -47,5 +47,21 @@ describe('Settings API', () => {
       expect(res.body.status).toBe('failed');
       expect(res.body.error).toMatch(/no credentials found/i);
     });
+
+    it('returns 400 for invalid registry hostname', async () => {
+      const res = await request
+        .post('/api/registries/verify')
+        .send({ registry: '169.254.169.254' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid registry hostname/i);
+    });
+
+    it('returns 400 for registry hostname with path', async () => {
+      const res = await request
+        .post('/api/registries/verify')
+        .send({ registry: 'registry.example.com/evil' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid registry hostname/i);
+    });
   });
 });

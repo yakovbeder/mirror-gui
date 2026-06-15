@@ -7,7 +7,7 @@ import { ensureTestDirs } from './helpers/setup.js';
 
 describe('Operations lifecycle API', () => {
   let request: Awaited<ReturnType<typeof getTestApp>>;
-  const seededOpId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const seededOpId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
   beforeAll(async () => {
     await ensureTestDirs();
@@ -99,7 +99,7 @@ describe('Operations lifecycle API', () => {
 
     it('returns 404 for non-existent operation', async () => {
       const res = await request.get(
-        '/api/operations/00000000-0000-0000-0000-000000000000/details'
+        '/api/operations/00000000-0000-4000-8000-000000000000/details'
       );
       expect(res.status).toBe(404);
     });

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
-import { exec, spawn, ChildProcess } from 'child_process';
+import { exec, execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import YAML from 'yaml';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,6 +20,17 @@ import {
   getVersionsFromMetadata,
   normalizeChannels,
 } from './utils.js';
+import {
+  getSafeQueryParam,
+  isSafeOutboundUrl,
+  isValidMirrorApiVersion,
+  isValidOperationId,
+  isValidRegistryHostname,
+  resolveOperationJsonPath,
+  resolveOperationLogPath,
+  resolvePathWithinDir,
+} from './security.js';
+import { moderateRateLimiter, strictRateLimiter } from './rateLimit.js';
 
 const fsp = fs.promises;
 
@@ -27,6 +38,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface OperationRecord {
   id: string;
@@ -254,7 +266,7 @@ async function getSystemInfo(): Promise<SystemInfo> {
       execAsync('uname -m').catch(() => ({ stdout: 'Not available', stderr: '' })),
     ]);
 
-    const diskSpace = await execAsync(`df -k ${STORAGE_DIR}`).catch(() => ({ stdout: '', stderr: '' }));
+    const diskSpace = await execFileAsync('df', ['-k', STORAGE_DIR]).catch(() => ({ stdout: '', stderr: '' }));
     const lines = diskSpace.stdout.split('\n');
     const diskInfo = lines[1] ? lines[1].split(/\s+/) : [];
     const availableSpace = diskInfo[3] ? parseInt(diskInfo[3]) * 1024 : 0;
@@ -262,7 +274,7 @@ async function getSystemInfo(): Promise<SystemInfo> {
 
     let cacheSizeBytes = 0;
     try {
-      const duOutput = await execAsync(`du -sb ${CACHE_DIR}`).catch(() => ({ stdout: '0', stderr: '' }));
+      const duOutput = await execFileAsync('du', ['-sb', CACHE_DIR]).catch(() => ({ stdout: '0', stderr: '' }));
       cacheSizeBytes = parseInt(duOutput.stdout.split('\t')[0]) || 0;
     } catch { /* du may fail */ }
 
@@ -328,14 +340,16 @@ async function saveOperation(operation: OperationRecord): Promise<void> {
 }
 
 async function updateOperation(operationId: string, updates: Partial<OperationRecord>): Promise<OperationRecord> {
-  const filename = `${operationId}.json`;
-  const filepath = path.join(OPERATIONS_DIR, filename);
+  const resolved = resolveOperationJsonPath(OPERATIONS_DIR, operationId);
+  if (!resolved.ok) {
+    throw Object.assign(new Error(resolved.error), { code: 'EINVAL' });
+  }
 
   try {
-    const content = await fsp.readFile(filepath, 'utf8');
+    const content = await fsp.readFile(resolved.filepath, 'utf8');
     const operation: OperationRecord = JSON.parse(content);
     const updatedOperation = { ...operation, ...updates };
-    await fsp.writeFile(filepath, JSON.stringify(updatedOperation, null, 2));
+    await fsp.writeFile(resolved.filepath, JSON.stringify(updatedOperation, null, 2));
     return updatedOperation;
   } catch (error: unknown) {
     console.error('Error updating operation:', error);
@@ -344,11 +358,13 @@ async function updateOperation(operationId: string, updates: Partial<OperationRe
 }
 
 async function getOperation(operationId: string): Promise<OperationRecord> {
-  const filename = `${operationId}.json`;
-  const filepath = path.join(OPERATIONS_DIR, filename);
+  const resolved = resolveOperationJsonPath(OPERATIONS_DIR, operationId);
+  if (!resolved.ok) {
+    throw Object.assign(new Error(resolved.error), { code: 'EINVAL' });
+  }
 
   try {
-    const content = await fsp.readFile(filepath, 'utf8');
+    const content = await fsp.readFile(resolved.filepath, 'utf8');
     return JSON.parse(content);
   } catch (error: unknown) {
     console.error('Error reading operation:', error);
@@ -362,7 +378,7 @@ async function getSystemHealth(): Promise<string> {
 
   let diskOk = false;
   try {
-    const diskSpace = await execAsync(`df -k ${STORAGE_DIR}`);
+    const diskSpace = await execFileAsync('df', ['-k', STORAGE_DIR]);
     const lines = diskSpace.stdout.split('\n');
     const diskInfo = lines[1] ? lines[1].split(/\s+/) : [];
     const availableSpace = diskInfo[3] ? parseInt(diskInfo[3]) * 1024 : 0;
@@ -452,7 +468,7 @@ async function queryOperatorCatalog(catalogUrl: string): Promise<{ name: string 
     console.error(`[ERROR] Catalog data not found for ${catalogUrl}. Catalog data should be pre-fetched during build.`);
     return [];
   } catch (error: unknown) {
-    console.error(`Error querying catalog ${catalogUrl}:`, error);
+    console.error('Error querying catalog:', catalogUrl, error);
     return [];
   }
 }
@@ -481,7 +497,7 @@ async function queryOperatorChannels(catalogUrl: string, operatorName: string): 
     console.error(`[ERROR] Channel data not found for ${operatorName} in ${catalogUrl}. Catalog data should be pre-fetched during build.`);
     return [];
   } catch (error: unknown) {
-    console.error(`Error querying channels for ${operatorName} from ${catalogUrl}:`, error);
+    console.error('Error querying channels for operator from catalog:', operatorName, catalogUrl, error);
     return [];
   }
 }
@@ -505,7 +521,13 @@ async function getActualChannelsFromCatalog(catalogType: string, catalogVersion:
 
     return null;
   } catch (error: unknown) {
-    console.error(`Error reading generated catalog data for ${operatorName} in ${catalogType}:${catalogVersion}:`, (error as Error).message);
+    console.error(
+      'Error reading generated catalog data for operator:',
+      operatorName,
+      catalogType,
+      catalogVersion,
+      (error as Error).message,
+    );
     return null;
   }
 }
@@ -634,7 +656,13 @@ async function getOperatorDependencies(catalogType: string, catalogVersion: stri
 
     return uniqueDependencies;
   } catch (error: unknown) {
-    console.error(`Error getting dependencies for ${operatorName} in ${catalogType}:${catalogVersion}:`, (error as Error).message);
+    console.error(
+      'Error getting dependencies for operator:',
+      operatorName,
+      catalogType,
+      catalogVersion,
+      (error as Error).message,
+    );
     return [];
   }
 }
@@ -814,7 +842,7 @@ app.get('/api/pull-secret/status', (_req: Request, res: Response) => {
   res.json({ detected: pullSecretDetected, path: pullSecretPath });
 });
 
-app.get('/api/pull-secret/content', async (_req: Request, res: Response) => {
+app.get('/api/pull-secret/content', strictRateLimiter, async (_req: Request, res: Response) => {
   try {
     if (!pullSecretDetected || !pullSecretPath) {
       res.json({ content: '' });
@@ -827,7 +855,7 @@ app.get('/api/pull-secret/content', async (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/pull-secret', async (req: Request, res: Response) => {
+app.post('/api/pull-secret', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { content } = req.body;
     if (!content || typeof content !== 'string' || content.trim().length < 2) {
@@ -853,7 +881,7 @@ app.post('/api/pull-secret', async (req: Request, res: Response) => {
   }
 });
 
-app.delete('/api/pull-secret', async (_req: Request, res: Response) => {
+app.delete('/api/pull-secret', strictRateLimiter, async (_req: Request, res: Response) => {
   try {
     if (pullSecretPath) {
       try {
@@ -872,7 +900,7 @@ app.delete('/api/pull-secret', async (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/system/paths', async (req: Request, res: Response) => {
+app.get('/api/system/paths', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const commonPaths = [
       {
@@ -918,7 +946,7 @@ app.get('/api/system/paths', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/mirror-folders', async (_req: Request, res: Response) => {
+app.get('/api/mirror-folders', moderateRateLimiter, async (_req: Request, res: Response) => {
   try {
     const entries = await fsp.readdir(MIRROR_BASE_DIR, { withFileTypes: true });
     const folders = entries
@@ -931,7 +959,7 @@ app.get('/api/mirror-folders', async (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/mirror-folders', async (req: Request, res: Response) => {
+app.post('/api/mirror-folders', moderateRateLimiter, async (req: Request, res: Response) => {
   const { name } = req.body || {};
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Folder name is required' });
@@ -953,7 +981,7 @@ app.post('/api/mirror-folders', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/config/list', async (req: Request, res: Response) => {
+app.get('/api/config/list', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const files = await fsp.readdir(CONFIGS_DIR);
     const configs = [];
@@ -975,40 +1003,42 @@ app.get('/api/config/list', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/config/download/:filename', async (req: Request, res: Response) => {
-  const basename = path.basename(req.params.filename || '');
-  if (!basename || !/\.(ya?ml)$/i.test(basename)) {
-    return res.status(400).json({ error: 'Invalid filename' });
-  }
-  const filepath = path.resolve(CONFIGS_DIR, basename);
-  const configsDirResolved = path.resolve(CONFIGS_DIR);
-  if (!filepath.startsWith(configsDirResolved + path.sep) && filepath !== configsDirResolved) {
-    return res.status(400).json({ error: 'Invalid filename' });
+app.get('/api/config/download/:filename', moderateRateLimiter, async (req: Request, res: Response) => {
+  const resolved = resolvePathWithinDir(CONFIGS_DIR, req.params.filename || '', {
+    extensionPattern: /\.(ya?ml)$/i,
+  });
+  if (!resolved.ok) {
+    return res.status(400).json({ error: resolved.error });
   }
   try {
-    await fsp.access(filepath);
-    res.setHeader('Content-Disposition', `attachment; filename="${basename}"`);
+    await fsp.access(resolved.filepath);
+    res.setHeader('Content-Disposition', `attachment; filename="${resolved.basename}"`);
     res.setHeader('Content-Type', 'application/x-yaml');
-    res.sendFile(filepath);
+    res.sendFile(resolved.filepath);
   } catch {
     res.status(404).json({ error: 'Configuration file not found' });
   }
 });
 
-app.post('/api/config/save', async (req: Request, res: Response) => {
+app.post('/api/config/save', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const { config, name } = req.body;
     const filename = name || `imageset-config-${Date.now()}.yaml`;
-    const filepath = path.join(CONFIGS_DIR, filename);
+    const resolved = resolvePathWithinDir(CONFIGS_DIR, filename, {
+      extensionPattern: /\.(ya?ml)$/i,
+    });
+    if (!resolved.ok) {
+      return res.status(400).json({ error: resolved.error });
+    }
 
-    await fsp.writeFile(filepath, config);
-    res.json({ message: 'Configuration saved successfully', filename });
+    await fsp.writeFile(resolved.filepath, config);
+    res.json({ message: 'Configuration saved successfully', filename: resolved.basename });
   } catch {
     res.status(500).json({ error: 'Failed to save configuration' });
   }
 });
 
-app.post('/api/config/upload', async (req: Request, res: Response) => {
+app.post('/api/config/upload', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const { filename, content } = req.body;
 
@@ -1023,7 +1053,7 @@ app.post('/api/config/upload', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Invalid YAML: Must be an ImageSetConfiguration' });
       }
 
-      if (!parsed.apiVersion || !parsed.apiVersion.includes('mirror.openshift.io')) {
+      if (!isValidMirrorApiVersion(parsed.apiVersion)) {
         return res.status(400).json({ error: 'Invalid YAML: Must have mirror.openshift.io API version' });
       }
 
@@ -1038,22 +1068,27 @@ app.post('/api/config/upload', async (req: Request, res: Response) => {
       ? filename
       : `${filename}.yaml`;
 
-    const filepath = path.join(CONFIGS_DIR, finalFilename);
+    const resolved = resolvePathWithinDir(CONFIGS_DIR, finalFilename, {
+      extensionPattern: /\.(ya?ml)$/i,
+    });
+    if (!resolved.ok) {
+      return res.status(400).json({ error: resolved.error });
+    }
 
     try {
-      await fsp.access(filepath);
+      await fsp.access(resolved.filepath);
       return res.status(409).json({ error: 'Configuration file already exists' });
     } catch { /* file does not exist, proceed */ }
 
-    await fsp.writeFile(filepath, content);
-    res.json({ message: 'Configuration uploaded successfully', filename: finalFilename });
+    await fsp.writeFile(resolved.filepath, content);
+    res.json({ message: 'Configuration uploaded successfully', filename: resolved.basename });
   } catch (error: unknown) {
     console.error('Error uploading configuration:', error);
     res.status(500).json({ error: 'Failed to upload configuration' });
   }
 });
 
-app.delete('/api/config/delete/:filename', async (req: Request, res: Response) => {
+app.delete('/api/config/delete/:filename', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 
@@ -1061,19 +1096,20 @@ app.delete('/api/config/delete/:filename', async (req: Request, res: Response) =
       return res.status(400).json({ error: 'Filename is required' });
     }
 
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return res.status(400).json({ error: 'Invalid filename' });
+    const resolved = resolvePathWithinDir(CONFIGS_DIR, filename, {
+      extensionPattern: /\.(ya?ml)$/i,
+    });
+    if (!resolved.ok) {
+      return res.status(400).json({ error: resolved.error });
     }
 
-    const filepath = path.join(CONFIGS_DIR, filename);
-
     try {
-      await fsp.access(filepath);
+      await fsp.access(resolved.filepath);
     } catch {
       return res.status(404).json({ error: 'Configuration file not found' });
     }
 
-    await fsp.unlink(filepath);
+    await fsp.unlink(resolved.filepath);
     res.json({ message: 'Configuration deleted successfully' });
   } catch (error: unknown) {
     console.error('Error deleting configuration:', error);
@@ -1120,13 +1156,14 @@ app.get('/api/operators', async (req: Request, res: Response) => {
       __routeTestHooks.failNextOperatorsGet = false;
       throw new Error('forced failure for operators route (test)');
     }
-    const { catalog, detailed } = req.query;
+    const catalog = getSafeQueryParam(req, 'catalog');
+    const detailed = getSafeQueryParam(req, 'detailed');
 
     if (catalog) {
       const catalogData = await loadPreFetchedCatalogData();
       if (catalogData) {
-        const catalogType = getCatalogNameFromUrl(catalog as string);
-        const catalogVersion = (catalog as string).includes(':') ? (catalog as string).split(':')[1] : 'v4.21';
+        const catalogType = getCatalogNameFromUrl(catalog);
+        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.21';
         const key = `${catalogType}:${catalogVersion}`;
 
         const operators = catalogData.operators[key];
@@ -1229,7 +1266,7 @@ app.get('/api/operators/:operator/versions', async (req: Request, res: Response)
     res.status(404).json({ error: 'Operator not found' });
 
   } catch (error: unknown) {
-    console.error(`Error getting versions for ${req.params.operator}:`, error);
+    console.error('Error getting versions for operator:', req.params.operator, error);
     res.status(500).json({ error: 'Failed to get operator versions' });
   }
 });
@@ -1311,22 +1348,23 @@ app.get('/api/operator-channels/:operator', async (req: Request, res: Response) 
 
     res.status(404).json({ error: 'No channels found for this operator' });
   } catch (error: unknown) {
-    console.error(`Error fetching channels for ${req.params.operator}:`, error);
+    console.error('Error fetching channels for operator:', req.params.operator, error);
     res.status(500).json({ error: 'Failed to get operator channels' });
   }
 });
 
 app.get('/api/operators/channels', async (req: Request, res: Response) => {
   try {
-    const { catalogUrl, operatorName } = req.query;
+    const catalogUrl = getSafeQueryParam(req, 'catalogUrl');
+    const operatorName = getSafeQueryParam(req, 'operatorName');
 
     if (!catalogUrl || !operatorName) {
       return res.status(400).json({ error: 'catalogUrl and operatorName query parameters are required' });
     }
 
-    const channels = await queryOperatorChannels(catalogUrl as string, operatorName as string);
+    const channels = await queryOperatorChannels(catalogUrl, operatorName);
     if (channels && Array.isArray(channels) && channels.length > 0) {
-      const normalizedChannels = normalizeChannels(channels, operatorName as string);
+      const normalizedChannels = normalizeChannels(channels, operatorName);
       return res.json(normalizedChannels);
     }
 
@@ -1340,15 +1378,15 @@ app.get('/api/operators/channels', async (req: Request, res: Response) => {
 app.get('/api/operators/:operator/dependencies', async (req: Request, res: Response) => {
   try {
     const { operator } = req.params;
-    const { catalogUrl } = req.query;
+    const catalogUrl = getSafeQueryParam(req, 'catalogUrl');
 
     let dependencies: OperatorDependency[] = [];
     let catalogType: string | null = null;
     let catalogVersion: string | null = null;
 
     if (catalogUrl) {
-      catalogType = getCatalogNameFromUrl(catalogUrl as string);
-      catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.21';
+      catalogType = getCatalogNameFromUrl(catalogUrl);
+      catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
 
       dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
     } else {
@@ -1387,12 +1425,12 @@ app.get('/api/operators/:operator/dependencies', async (req: Request, res: Respo
       count: dependencies.length,
     });
   } catch (error: unknown) {
-    console.error(`Error getting dependencies for ${req.params.operator}:`, error);
+    console.error('Error getting dependencies for operator:', req.params.operator, error);
     res.status(500).json({ error: 'Failed to get operator dependencies' });
   }
 });
 
-app.get('/api/operations', async (req: Request, res: Response) => {
+app.get('/api/operations', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const operations = await getOperations();
     res.json(operations);
@@ -1401,7 +1439,7 @@ app.get('/api/operations', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/operations/history', async (req: Request, res: Response) => {
+app.get('/api/operations/history', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const operations = await getOperations();
     res.json(operations);
@@ -1410,14 +1448,19 @@ app.get('/api/operations/history', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operations/start', async (req: Request, res: Response) => {
+app.post('/api/operations/start', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { configFile, mirrorDestinationSubdir } = req.body;
     const operationId = uuidv4();
-    const configPath = path.join(CONFIGS_DIR, configFile);
+    const resolvedConfig = resolvePathWithinDir(CONFIGS_DIR, configFile, {
+      extensionPattern: /\.(ya?ml)$/i,
+    });
+    if (!resolvedConfig.ok) {
+      return res.status(400).json({ error: resolvedConfig.error });
+    }
 
     try {
-      await fsp.access(configPath);
+      await fsp.access(resolvedConfig.filepath);
     } catch {
       return res.status(404).json({ error: 'Configuration file not found' });
     }
@@ -1520,7 +1563,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
     const operation: OperationRecord = {
       id: operationId,
       name: `Mirror Operation ${operationId.slice(0, 8)}`,
-      configFile,
+      configFile: resolvedConfig.basename,
       mirrorDestination: mirrorPath,
       status: 'running',
       startedAt: new Date().toISOString(),
@@ -1544,7 +1587,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
 
   const child = spawn('oc-mirror', [
       '--v2',
-      '--config', configPath,
+      '--config', resolvedConfig.filepath,
       '--dest-tls-verify=false',
       '--src-tls-verify=false',
       '--cache-dir', cacheDir,
@@ -1646,9 +1689,12 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
+app.post('/api/operations/:id/stop', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidOperationId(id)) {
+      return res.status(400).json({ error: 'Invalid operation id' });
+    }
 
     stoppedOperations.add(id);
 
@@ -1683,14 +1729,16 @@ app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
   }
 });
 
-app.delete('/api/operations/:id', async (req: Request, res: Response) => {
+app.delete('/api/operations/:id', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const filename = `${id}.json`;
-    const filepath = path.join(OPERATIONS_DIR, filename);
+    const resolved = resolveOperationJsonPath(OPERATIONS_DIR, id);
+    if (!resolved.ok) {
+      return res.status(400).json({ error: resolved.error });
+    }
 
     try {
-      await fsp.unlink(filepath);
+      await fsp.unlink(resolved.filepath);
     } catch { /* file may already be deleted */ }
 
     res.json({ message: 'Operation deleted successfully' });
@@ -1699,15 +1747,23 @@ app.delete('/api/operations/:id', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/operations/:id/logs', async (req: Request, res: Response) => {
+app.get('/api/operations/:id/logs', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidOperationId(id)) {
+      return res.status(400).json({ error: 'Invalid operation id' });
+    }
+
     const operation = await getOperation(id);
     let logs = '';
 
-    const logFile = path.join(LOGS_DIR, `${id}.log`);
+    const resolvedLog = resolveOperationLogPath(LOGS_DIR, id);
+    if (!resolvedLog.ok) {
+      return res.status(400).json({ error: resolvedLog.error });
+    }
+
     try {
-      logs = await fsp.readFile(logFile, 'utf8');
+      logs = await fsp.readFile(resolvedLog.filepath, 'utf8');
     } catch {
       if (operation.logs && operation.logs.length > 0) {
         logs = operation.logs.join('\n');
@@ -1715,14 +1771,24 @@ app.get('/api/operations/:id/logs', async (req: Request, res: Response) => {
     }
 
     res.json({ logs });
-  } catch {
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return res.status(404).json({ error: 'Operation not found' });
+    }
+    if ((error as NodeJS.ErrnoException).code === 'EINVAL') {
+      return res.status(400).json({ error: 'Invalid operation id' });
+    }
     res.status(500).json({ error: 'Failed to get operation logs' });
   }
 });
 
-app.get('/api/operations/:id/details', async (req: Request, res: Response) => {
+app.get('/api/operations/:id/details', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (!isValidOperationId(id)) {
+      return res.status(400).json({ error: 'Invalid operation id' });
+    }
+
     let operation: OperationRecord;
     try {
       operation = await getOperation(id);
@@ -1814,9 +1880,20 @@ app.get('/api/operations/:id/details', async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/operations/:id/logstream', (req: Request, res: Response) => {
+app.get('/api/operations/:id/logstream', strictRateLimiter, (req: Request, res: Response) => {
   const { id } = req.params;
-  const logFile = path.join(LOGS_DIR, `${id}.log`);
+  if (!isValidOperationId(id)) {
+    res.status(400).json({ error: 'Invalid operation id' });
+    return;
+  }
+
+  const resolvedLog = resolveOperationLogPath(LOGS_DIR, id);
+  if (!resolvedLog.ok) {
+    res.status(400).json({ error: resolvedLog.error });
+    return;
+  }
+
+  const logFile = resolvedLog.filepath;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1879,7 +1956,7 @@ app.get('/api/operations/:id/logstream', (req: Request, res: Response) => {
 
 const registryVerificationCache: Record<string, { status: string; error?: string }> = {};
 
-app.get('/api/registries', async (_req: Request, res: Response) => {
+app.get('/api/registries', moderateRateLimiter, async (_req: Request, res: Response) => {
   try {
     if (!pullSecretDetected || !pullSecretPath) {
       res.json({ registries: [] });
@@ -1918,11 +1995,15 @@ app.get('/api/registries', async (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/registries/verify', async (req: Request, res: Response) => {
+app.post('/api/registries/verify', strictRateLimiter, async (req: Request, res: Response) => {
   try {
     const { registry } = req.body;
     if (!registry) {
       res.status(400).json({ error: 'Registry is required' });
+      return;
+    }
+    if (!isValidRegistryHostname(registry)) {
+      res.status(400).json({ error: 'Invalid registry hostname' });
       return;
     }
     if (!pullSecretDetected || !pullSecretPath) {
@@ -1960,7 +2041,12 @@ app.post('/api/registries/verify', async (req: Request, res: Response) => {
       const serviceMatch = wwwAuth.match(/service="([^"]+)"/);
 
       if (realmMatch) {
-        const tokenUrl = new URL(realmMatch[1]);
+        const realmUrl = realmMatch[1];
+        if (!isSafeOutboundUrl(realmUrl, registry)) {
+          sendResult({ registry, status: 'failed', error: 'Unsafe authentication realm URL' });
+          return;
+        }
+        const tokenUrl = new URL(realmUrl);
         if (serviceMatch) tokenUrl.searchParams.set('service', serviceMatch[1]);
         const tokenRes = await fetch(tokenUrl.toString(), {
           headers: { 'Authorization': `Basic ${authData.auth}` },
@@ -1978,7 +2064,7 @@ app.post('/api/registries/verify', async (req: Request, res: Response) => {
 
     sendResult({ registry, status: 'failed', error: `HTTP ${response.status}` });
   } catch (error: unknown) {
-    console.error(`Error verifying registry ${req.body?.registry}:`, error);
+    console.error('Error verifying registry:', req.body?.registry, error);
     const reg = req.body?.registry;
     const errMsg = (error as Error).message || 'Connection failed';
     if (reg) registryVerificationCache[reg] = { status: 'failed', error: errMsg };
@@ -1986,7 +2072,7 @@ app.post('/api/registries/verify', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
+app.post('/api/cache/cleanup', strictRateLimiter, async (_req: Request, res: Response) => {
   try {
     const entries = await fsp.readdir(CACHE_DIR);
     for (const entry of entries) {
@@ -2073,7 +2159,7 @@ let catalogSyncState: CatalogSyncState = {
 };
 let catalogSyncProcess: ChildProcess | null = null;
 
-app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
+app.post('/api/catalogs/sync', strictRateLimiter, async (_req: Request, res: Response) => {
   if (catalogSyncState.status === 'running') {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
@@ -2193,7 +2279,7 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
   res.json({ message: 'Catalog sync started', status: catalogSyncState.status });
 });
 
-app.get('/api/catalogs/sync/status', async (_req: Request, res: Response) => {
+app.get('/api/catalogs/sync/status', moderateRateLimiter, async (_req: Request, res: Response) => {
   const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
   let hasRuntimeSyncData = false;
   try {
@@ -2219,7 +2305,7 @@ app.get('/api/catalogs/sync/status', async (_req: Request, res: Response) => {
   });
 });
 
-app.delete('/api/catalogs/sync/data', async (_req: Request, res: Response) => {
+app.delete('/api/catalogs/sync/data', strictRateLimiter, async (_req: Request, res: Response) => {
   try {
     const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
     try {
@@ -2260,7 +2346,7 @@ app.delete('/api/catalogs/sync/data', async (_req: Request, res: Response) => {
   }
 });
 
-app.get('/api/system/info', async (req: Request, res: Response) => {
+app.get('/api/system/info', moderateRateLimiter, async (req: Request, res: Response) => {
   try {
     const systemInfo = await getSystemInfo();
     res.json(systemInfo);

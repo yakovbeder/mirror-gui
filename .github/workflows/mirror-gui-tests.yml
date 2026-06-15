@@ -1,5 +1,8 @@
 name: Mirror-GUI Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, '**']
@@ -36,6 +39,9 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v6
 
