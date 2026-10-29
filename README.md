@@ -116,6 +116,7 @@ Configure environment preferences across four tabs:
 |----------|-------------|---------|
 | `IMAGE_NAME` | Override the container image name | `mirror-gui:latest` |
 | `WEB_PORT` | Override the host port | `3000` |
+| `WEB_BIND_HOST` | Host address the launchers publish. `0.0.0.0` is an unsupported override that exposes the UI on every interface | `127.0.0.1` |
 | `CACHE_DIR` | Override the oc-mirror cache directory (absolute host path) | `./data/cache` |
 
 ## Compatibility

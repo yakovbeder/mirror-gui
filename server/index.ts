@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { exec, spawn, ChildProcess } from 'child_process';
@@ -228,13 +227,13 @@ interface RunningProcess {
 
 const app = express();
 export { app };
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const DIST_DIR = path.join(__dirname, '../dist');
 const DEV_INDEX_HTML = path.join(__dirname, '../index.html');
 
 app.use(compression());
-app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -2496,7 +2495,7 @@ async function configureDevelopmentFrontend(): Promise<void> {
 }
 
 function logStartup(): void {
-  console.log(`Mirror-GUI server running on port ${PORT}`);
+  console.log(`Mirror-GUI server running on ${BIND_HOST}:${PORT}`);
   console.log(`Storage directory: ${STORAGE_DIR}`);
   console.log(`Configs directory: ${CONFIGS_DIR}`);
   console.log(`Operations directory: ${OPERATIONS_DIR}`);
@@ -2528,7 +2527,7 @@ async function startServer(): Promise<void> {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  app.listen(PORT, () => {
+  app.listen(PORT, BIND_HOST, () => {
     logStartup();
   });
 }

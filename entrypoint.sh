@@ -12,6 +12,14 @@ done
 chown -R "${APP_USER}:0" "$APP_DATA"
 chmod -R 775 "$APP_DATA"
 
+# Podman forwards the host loopback port onto the container network namespace,
+# not onto the container's own loopback. Listen on all container interfaces
+# unless the operator set BIND_HOST. The host publish address is the isolation
+# boundary.
+if [ -z "${BIND_HOST:-}" ]; then
+    export BIND_HOST=0.0.0.0
+fi
+
 AUTHFILE="${OC_MIRROR_AUTHFILE:-/app/pull-secret.json}"
 if [ -f "$AUTHFILE" ]; then
     chown "${APP_USER}:0" "$AUTHFILE"
