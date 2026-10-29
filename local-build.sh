@@ -291,6 +291,7 @@ run_container() {
 
     if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
         print_warning "WEB_BIND_HOST=$WEB_BIND_HOST publishes the UI beyond loopback. That override is unsupported for the localhost security model."
+        print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
     fi
 
     while [ "$bind_attempt" -le "$bind_retry_limit" ]; do
@@ -323,6 +324,7 @@ run_container() {
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
             -e BIND_HOST="${BIND_HOST:-0.0.0.0}" \
+            ${ALLOWED_HOSTS:+-e ALLOWED_HOSTS="${ALLOWED_HOSTS}"} \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
@@ -433,6 +435,7 @@ show_help() {
     echo "  BUILD_VERSION=1.0          Compatibility alias for IMAGE_VERSION"
     echo "  WEB_PORT=$DEFAULT_WEB_PORT            Override the host port used for the web UI"
     echo "  WEB_BIND_HOST=127.0.0.1    Host address to publish. 0.0.0.0 is unsupported."
+    echo "  ALLOWED_HOSTS              Extra Host header names, comma-separated. Local names are always allowed."
     echo "  CACHE_DIR                  Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
     echo ""
     echo "Examples:"

@@ -233,8 +233,36 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const DIST_DIR = path.join(__dirname, '../dist');
 const DEV_INDEX_HTML = path.join(__dirname, '../index.html');
 
+const LOCAL_HOST_NAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+function normalizeHostName(value: string): string {
+  return value.trim().toLowerCase().replace(/^\[|\]$/g, '');
+}
+
+function isAllowedHost(hostname: string | undefined): boolean {
+  if (!hostname) {
+    return false;
+  }
+  const normalized = normalizeHostName(hostname);
+  if (LOCAL_HOST_NAMES.has(normalized)) {
+    return true;
+  }
+  const extras = (process.env.ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map(normalizeHostName)
+    .filter((name) => name.length > 0);
+  return extras.includes(normalized);
+}
+
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (!isAllowedHost(req.hostname)) {
+    res.status(403).json({ error: 'Host is not allowed' });
+    return;
+  }
+  next();
+});
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();

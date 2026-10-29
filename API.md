@@ -28,7 +28,7 @@ The supported deployment is a single-user tool on localhost. `./mirror-gui.sh` a
 
 The UI and API are same-origin. The server does not send cross-origin access headers. A browser page on another origin cannot read the API.
 
-`GET /api/pull-secret/content` returns the complete pull secret to any caller who can already reach the port. The Settings editor needs that body. Reaching the port is the access boundary.
+`GET /api/pull-secret/content` returns the complete pull secret to any caller who can already reach the port. The Settings editor needs that body. The server allows `Host` names `localhost`, `127.0.0.1`, and `::1` on any port. Any other hostname must be listed in `ALLOWED_HOSTS`.
 
 ## Response Format
 API responses are returned in JSON format. Most endpoints return domain-specific JSON directly (e.g., `{ "status": "healthy" }`, `{ "registries": [...] }`). Some endpoints use a wrapper with `success`/`data` fields. Error responses typically include an `error` field:
