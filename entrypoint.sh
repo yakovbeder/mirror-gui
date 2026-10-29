@@ -12,8 +12,8 @@ done
 chown -R "${APP_USER}:0" "$APP_DATA"
 chmod -R 775 "$APP_DATA"
 
-# Podman forwards the host loopback port onto the container network namespace,
-# not onto the container's own loopback. Listen on all container interfaces
+# Podman forwards the published host port onto the container network,
+# not onto 127.0.0.1 inside the container. Listen on all container interfaces
 # unless the user set BIND_HOST. The host publish address is the isolation
 # boundary.
 if [ -z "${BIND_HOST:-}" ]; then

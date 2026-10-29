@@ -28,8 +28,8 @@ else
     WEB_PORT="$DEFAULT_WEB_PORT"
 fi
 
-# Host publish address. Loopback is the supported deployment. 0.0.0.0 is an
-# explicit, unsupported override for users who intentionally share the port.
+# Host publish address. This computer only is the supported deployment.
+# 0.0.0.0 is an explicit, unsupported override for users who intentionally share the port.
 WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"
 
 # Colors for output
@@ -290,7 +290,7 @@ run_container() {
     ensure_available_web_port
 
     if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
-        print_warning "The configured host publishes beyond loopback. That override is unsupported for the localhost security model."
+        print_warning "The web interface is reachable from other computers. Only access from this computer is supported."
         print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
     fi
 
