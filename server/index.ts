@@ -2546,7 +2546,7 @@ async function configureDevelopmentFrontend(): Promise<void> {
 }
 
 function logStartup(): void {
-  console.log(`Mirror-GUI server running on ${BIND_HOST}:${PORT}`);
+  console.log('Mirror-GUI server started on the configured bind host');
   console.log(`Storage directory: ${STORAGE_DIR}`);
   console.log(`Configs directory: ${CONFIGS_DIR}`);
   console.log(`Operations directory: ${OPERATIONS_DIR}`);

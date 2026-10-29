@@ -25,13 +25,11 @@ describe('Host allow-list', () => {
     }
   });
 
-  it.each([
-    'localhost:3000',
-    '127.0.0.1:3001',
-    '[::1]:31991',
-  ])('accepts local host %s', async (host) => {
-    const res = await request.get('/api/health').set('Host', host);
-    expect(res.status).toBe(200);
+  it('accepts local host headers', async () => {
+    for (const host of ['localhost:3000', '127.0.0.1:3001', '[::1]:31991']) {
+      const res = await request.get('/api/health').set('Host', host);
+      expect(res.status).toBe(200);
+    }
   });
 
   it('accepts a hostname listed in ALLOWED_HOSTS', async () => {

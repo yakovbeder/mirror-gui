@@ -290,7 +290,7 @@ run_container() {
     ensure_available_web_port
 
     if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
-        print_warning "WEB_BIND_HOST=$WEB_BIND_HOST publishes the UI beyond loopback. That override is unsupported for the localhost security model."
+        print_warning "The configured host publishes beyond loopback. That override is unsupported for the localhost security model."
         print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
     fi
 

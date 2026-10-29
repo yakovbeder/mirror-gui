@@ -9,15 +9,17 @@ describe('UI request header on empty-body POSTs', () => {
     request = await getTestApp();
   });
 
-  it.each([
-    '/api/cache/cleanup',
-    '/api/catalogs/sync',
-    '/api/operators/refresh-cache',
-    '/api/operations/abc/stop',
-  ])('rejects %s without the header', async (path) => {
-    const res = await request.post(path);
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: 'Missing required request header' });
+  it('rejects empty-body POSTs without the header', async () => {
+    for (const path of [
+      '/api/cache/cleanup',
+      '/api/catalogs/sync',
+      '/api/operators/refresh-cache',
+      '/api/operations/abc/stop',
+    ]) {
+      const res = await request.post(path);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ error: 'Missing required request header' });
+    }
   });
 
   it('accepts cache cleanup when the header is present', async () => {

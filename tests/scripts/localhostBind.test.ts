@@ -6,17 +6,23 @@ function readRepoFile(name: string): string {
   return readFileSync(path.join(process.cwd(), name), 'utf8');
 }
 
-describe('localhost publish', () => {
-  for (const script of ['mirror-gui.sh', 'local-build.sh']) {
-    it(`${script} publishes on loopback unless WEB_BIND_HOST is set`, () => {
-      const source = readRepoFile(script);
+function expectLoopbackPublish(script: string): void {
+  const source = readRepoFile(script);
 
-      expect(source).toContain('WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"');
-      expect(source).toContain('-p "${WEB_BIND_HOST}:${WEB_PORT}:${CONTAINER_PORT}"');
-      expect(source).toContain('-e BIND_HOST="${BIND_HOST:-0.0.0.0}"');
-      expect(source).not.toContain('-p "$WEB_PORT:$CONTAINER_PORT"');
-    });
-  }
+  expect(source).toContain('WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"');
+  expect(source).toContain('-p "${WEB_BIND_HOST}:${WEB_PORT}:${CONTAINER_PORT}"');
+  expect(source).toContain('-e BIND_HOST="${BIND_HOST:-0.0.0.0}"');
+  expect(source).not.toContain('-p "$WEB_PORT:$CONTAINER_PORT"');
+}
+
+describe('localhost publish', () => {
+  it('mirror-gui.sh publishes on loopback unless WEB_BIND_HOST is set', () => {
+    expectLoopbackPublish('mirror-gui.sh');
+  });
+
+  it('local-build.sh publishes on loopback unless WEB_BIND_HOST is set', () => {
+    expectLoopbackPublish('local-build.sh');
+  });
 
   it('entrypoint listens on all container interfaces when BIND_HOST is unset', () => {
     const source = readRepoFile('entrypoint.sh');
