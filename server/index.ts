@@ -258,30 +258,17 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 const UI_REQUEST_HEADER = 'x-mirror-gui-request';
 
-function requiresUiRequestHeader(req: Request): boolean {
-  if (req.method !== 'POST') {
-    return false;
+function requireUiRequestHeader(req: Request, res: Response, next: NextFunction): void {
+  if (req.get(UI_REQUEST_HEADER) !== '1') {
+    res.status(403).json({ error: 'Missing required request header' });
+    return;
   }
-  if (
-    req.path === '/api/cache/cleanup'
-    || req.path === '/api/catalogs/sync'
-    || req.path === '/api/operators/refresh-cache'
-  ) {
-    return true;
-  }
-  return /^\/api\/operations\/[^/]+\/stop$/.test(req.path);
+  next();
 }
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (!isAllowedHost(req.hostname)) {
     res.status(403).json({ error: 'Host is not allowed' });
-    return;
-  }
-  next();
-});
-app.use((req: Request, res: Response, next: NextFunction) => {
-  if (requiresUiRequestHeader(req) && req.get(UI_REQUEST_HEADER) !== '1') {
-    res.status(403).json({ error: 'Missing required request header' });
     return;
   }
   next();
@@ -1406,7 +1393,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operators/refresh-cache', async (req: Request, res: Response) => {
+app.post('/api/operators/refresh-cache', requireUiRequestHeader, async (req: Request, res: Response) => {
   try {
     operatorCache.lastUpdate = null;
     await updateOperatorCache();
@@ -1886,7 +1873,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
+app.post('/api/operations/:id/stop', requireUiRequestHeader, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -2226,7 +2213,7 @@ app.post('/api/registries/verify', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
+app.post('/api/cache/cleanup', requireUiRequestHeader, async (_req: Request, res: Response) => {
   try {
     const entries = await fsp.readdir(CACHE_DIR);
     for (const entry of entries) {
@@ -2313,7 +2300,7 @@ let catalogSyncState: CatalogSyncState = {
 };
 let catalogSyncProcess: ChildProcess | null = null;
 
-app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
+app.post('/api/catalogs/sync', requireUiRequestHeader, async (_req: Request, res: Response) => {
   if (catalogSyncState.status === 'running') {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
