@@ -28,7 +28,7 @@ else
     WEB_PORT="$DEFAULT_WEB_PORT"
 fi
 
-# Host publish address. This computer only is the supported deployment.
+# Host publish address. This machine only is the supported deployment.
 # 0.0.0.0 is an explicit, unsupported override for users who intentionally share the port.
 WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"
 
@@ -291,7 +291,7 @@ run_container() {
     local bind_attempt=1
 
     if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
-        print_warning "The web interface is reachable from other computers. Only access from this computer is supported."
+        print_warning "The web interface is reachable from other machines. Only access from this machine is supported."
         print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
     fi
 

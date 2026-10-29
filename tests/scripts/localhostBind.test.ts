@@ -16,11 +16,11 @@ function expectLocalPublish(script: string): void {
 }
 
 describe('localhost publish', () => {
-  it('mirror-gui.sh publishes on this computer unless WEB_BIND_HOST is set', () => {
+  it('mirror-gui.sh publishes on this machine unless WEB_BIND_HOST is set', () => {
     expectLocalPublish('mirror-gui.sh');
   });
 
-  it('local-build.sh publishes on this computer unless WEB_BIND_HOST is set', () => {
+  it('local-build.sh publishes on this machine unless WEB_BIND_HOST is set', () => {
     expectLocalPublish('local-build.sh');
   });
 
