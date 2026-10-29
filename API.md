@@ -28,6 +28,8 @@ The supported deployment is a single-user tool on localhost. `./mirror-gui.sh` a
 
 The UI and API are same-origin. The server does not send cross-origin access headers. A browser page on another origin cannot read the API.
 
+`POST /api/cache/cleanup`, `POST /api/catalogs/sync`, `POST /api/operators/refresh-cache`, and `POST /api/operations/:id/stop` also require the header `X-Mirror-Gui-Request: 1`. A cross-site form cannot set that header. `DELETE` and JSON `fetch` from another origin stay blocked because the browser will not send them without a CORS preflight.
+
 `GET /api/pull-secret/content` returns the complete pull secret to any caller who can already reach the port. The Settings editor needs that body. The server allows `Host` names `localhost`, `127.0.0.1`, and `::1` on any port. Any other hostname must be listed in `ALLOWED_HOSTS`.
 
 ## Response Format

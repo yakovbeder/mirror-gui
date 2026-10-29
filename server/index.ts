@@ -256,9 +256,32 @@ function isAllowedHost(hostname: string | undefined): boolean {
 
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+const UI_REQUEST_HEADER = 'x-mirror-gui-request';
+
+function requiresUiRequestHeader(req: Request): boolean {
+  if (req.method !== 'POST') {
+    return false;
+  }
+  if (
+    req.path === '/api/cache/cleanup'
+    || req.path === '/api/catalogs/sync'
+    || req.path === '/api/operators/refresh-cache'
+  ) {
+    return true;
+  }
+  return /^\/api\/operations\/[^/]+\/stop$/.test(req.path);
+}
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (!isAllowedHost(req.hostname)) {
     res.status(403).json({ error: 'Host is not allowed' });
+    return;
+  }
+  next();
+});
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (requiresUiRequestHeader(req) && req.get(UI_REQUEST_HEADER) !== '1') {
+    res.status(403).json({ error: 'Missing required request header' });
     return;
   }
   next();
