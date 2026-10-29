@@ -8,7 +8,7 @@
 
 ## Deployment Context
 
-Mirror-GUI is a **single-user, localhost tool**. The user runs it on their own machine and accesses it from their own browser on a local port (default `3000`). The launchers publish that port on `127.0.0.1` only. It is never exposed to the internet or to other users on a network unless an operator sets the unsupported `WEB_BIND_HOST=0.0.0.0` override.
+Mirror-GUI is a **single-user, localhost tool**. The user runs it on their own machine and accesses it from their own browser on a local port (default `3000`). The launchers publish that port on `127.0.0.1` only. It is never exposed to the internet or to other users on a network unless a user sets the unsupported `WEB_BIND_HOST=0.0.0.0` override.
 
 **Workflow:**
 1. **Connected side** — user runs the app on a machine with internet access; the app downloads content from Red Hat registries via `oc-mirror`

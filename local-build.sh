@@ -29,7 +29,7 @@ else
 fi
 
 # Host publish address. Loopback is the supported deployment. 0.0.0.0 is an
-# explicit, unsupported override for operators who intentionally share the port.
+# explicit, unsupported override for users who intentionally share the port.
 WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"
 
 # Colors for output
